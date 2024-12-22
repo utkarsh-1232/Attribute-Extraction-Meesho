@@ -1,3 +1,4 @@
+# Downloading the Data
 To access the data for this competition, please navigate to the data directory and run the shell command:
 ```
 kaggle competitions download -c visual-taxonomy
