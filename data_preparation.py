@@ -3,6 +3,9 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
+def add_img_path(id_, img_folder):
+    return str(path/f'{img_folder}/{str(id_).zfill(6)}.jpg')
+
 class LabelEncoder:
     def __init__(self, df):
         attr_cols = [col for col in df.columns if col.startswith('attr')]
@@ -24,6 +27,42 @@ class LabelEncoder:
 
     def id2label(self, category, attr, id_):
         return self.id2label_map[category][attr][id_]
+
+def get_labels(row, encoder):
+    cat = row['Category']
+    labels = []
+    for i in range(10):
+        attr = f'attr_{i+1}'
+        label = str(row[attr])
+        label = encoder.label2id(cat, attr, label)
+        labels.append(label)
+    return tuple(labels)
+
+def process_df(df, is_test_df=False):
+    img_folder = 'test_images' if is_test_df else 'train_images'
+    df['img_path'] = df['id'].apply(add_img_path, img_folder=img_folder)
+    encoder = LabelEncoder(df)
+    df['labels'] = df.apply(get_labels, axis=1, encoder=encoder)
+    return df
+
+def add_question_and_tokenize(row, tokenizer, encode_token_id):
+    cat = row.name
+    attrs = row['Attribute_list']
+    question_lines = [f'For this image of {cat[:-1]}, please answer the following:']
+    question_lines.extend([f'[Encode] What is the {attr}?' for attr in attrs])
+    question = '\n'.join(question_lines)
+    
+    tokenized = tokenizer(question, padding=True, truncation=True, return_tensors='pt')
+    tokenized['special_token_mask'] = tokenized['input_ids']==encode_token_id
+    tokenized = {k:v.tolist() for k, v in tokenized.items()}
+
+    return pd.Series({**row.to_dict(), 'question':question, **tokenized})
+
+def process_cat_info(cat_info, tokenizer):
+    tokenizer.add_special_tokens({'additional_special_tokens':['[Encode]']})
+    encode_token_id = tokenizer.convert_tokens_to_ids('[Encode]')
+    cat_info.set_index('Category', inplace=True)
+    return cat_info.apply(add_question_and_tokenize, axis=1, args=(tokenizer, encode_token_id))
 
 @dataclass
 class MiniBatch:
