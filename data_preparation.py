@@ -99,10 +99,11 @@ class MeeshoDataloader:
             attention_mask = self.cat_info.loc[cat,'attention_mask']
             
             images = [Image.open(path) for path in self.df.loc[idxs,'img_path']]
-            pixel_values = self.img_processor(images=images, return_tensor='pt', size=(224,224))
+            pixel_values = self.img_processor(images=images, return_tensors='pt', size=(224,224))
             
             labels = self.df.loc[idxs,'labels']
             yield MiniBatch(category=cat, input_ids=torch.tensor(input_ids),
                             special_token_mask=torch.tensor(special_token_mask),
                             attention_mask=torch.tensor(attention_mask),
-                            pixel_values=pixel_values, labels=torch.tensor(labels))
+                            pixel_values=pixel_values.pixel_values,
+                            labels=torch.tensor(labels.tolist()))
