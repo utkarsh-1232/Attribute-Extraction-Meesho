@@ -46,7 +46,7 @@ class BlipForAttributeExtraction(BlipPreTrainedModel):
             logits = head(attr_embeds[:, i, :])
             preds[:, i] = logits.argmax(dim=1)
             if batch.labels is not None:
-                attr_loss[i] = nn.CrossEntropyLoss()(logits, batch.labels[:,i])
+                attr_loss[i] = nn.CrossEntropyLoss()(logits.cpu(), batch.labels[:,i])
         loss = attr_loss.mean() if batch.labels is not None else None
 
         return BlipAttributeExtractionModelOutput(loss=loss, attr_loss=attr_loss,
