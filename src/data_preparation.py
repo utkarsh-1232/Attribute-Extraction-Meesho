@@ -9,40 +9,42 @@ def add_img_path(id_, path, img_folder):
 
 class LabelEncoder:
     def __init__(self, df):
-        attr_cols = [col for col in df.columns if col.startswith('attr')]
-        self.unique_labels = df.groupby('Category')[attr_cols].agg(lambda col: col.unique())
-        self.label2id_map = {}
-        self.id2label_map = {}
-        for category, row in self.unique_labels.iterrows():
-            self.label2id_map[category] = {
+        self.vocab = df.drop(columns=['id','len']).groupby('Category').agg(lambda col: col.unique())
+        self.label2id_map, self.id2label_map = {}, {}
+        for cat, row in self.vocab.iterrows():
+            self.label2id_map[cat] = {
                 attr:{str(label):idx for idx, label in enumerate(labels)}
                 for attr, labels in row.items()
             }
-            self.id2label_map[category] = {
+            self.id2label_map[cat] = {
                 attr:{idx:str(label) for idx, label in enumerate(labels)}
                 for attr, labels in row.items()
             }
+    
+    def label2id(self, cat, attr,  label):
+        return self.label2id_map[cat][attr][label]
 
-    def label2id(self, category, attr,  label):
-        return self.label2id_map[category][attr][label]
+    def id2label(self, cat, attr, id_):
+        return self.id2label_map[cat][attr][id_]
 
-    def id2label(self, category, attr, id_):
-        return self.id2label_map[category][attr][id_]
+    def num_classes(self, cat):
+        return [len(labels) for labels in self.vocab.loc[cat].values if len(labels)>1]
 
 def get_labels(row, encoder):
     cat = row['Category']
-    labels = []
-    for i in range(10):
+    num_attrs = row['len']
+    ids = []
+    for i in range(num_attrs):
         attr = f'attr_{i+1}'
-        label = str(row[attr])
-        label = encoder.label2id(cat, attr, label)
-        labels.append(label)
-    return tuple(labels)
+        id_ = encoder.label2id(cat, attr, str(row[attr]))
+        ids.append(id_)
+    return tuple(ids)
 
-def process_df(df, path, is_test_df=False):
+def process_df(df, path, encoder, is_test_df=False):
+    df = df.copy()
     img_folder = 'test_images' if is_test_df else 'train_images'
     df['img_path'] = df['id'].apply(add_img_path, path=path, img_folder=img_folder)
-    encoder = LabelEncoder(df)
+    if is_test_df: return df
     df['labels'] = df.apply(get_labels, axis=1, encoder=encoder)
     return df
 
@@ -54,12 +56,13 @@ def add_question_and_tokenize(row, tokenizer, encode_token_id):
     question = '\n'.join(question_lines)
     
     tokenized = tokenizer(question, padding=True, truncation=True, return_tensors='pt')
-    tokenized['special_token_mask'] = tokenized['input_ids']==encode_token_id
+    tokenized['special_token_mask'] = (tokenized['input_ids']==encode_token_id).squeeze()
     tokenized = {k:v.tolist() for k, v in tokenized.items()}
 
     return pd.Series({**row.to_dict(), 'question':question, **tokenized})
 
 def process_cat_info(cat_info, tokenizer):
+    cat_info = cat_info.copy()
     tokenizer.add_special_tokens({'additional_special_tokens':['[Encode]']})
     encode_token_id = tokenizer.convert_tokens_to_ids('[Encode]')
     cat_info.set_index('Category', inplace=True)
@@ -102,7 +105,7 @@ class MeeshoDataloader:
             images = [Image.open(path) for path in self.df.loc[idxs,'img_path']]
             pixel_values = self.img_processor(images=images, return_tensors='pt', size=(224,224))
             
-            labels = self.df.loc[idxs,'labels']
+            labels = self.df.loc[idxs,'labels'] if 'labels' in self.df.columns else None
             yield MiniBatch(category=cat, input_ids=torch.tensor(input_ids),
                             special_token_mask=torch.tensor(special_token_mask),
                             attention_mask=torch.tensor(attention_mask),
