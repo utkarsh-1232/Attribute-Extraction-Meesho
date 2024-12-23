@@ -1,9 +1,10 @@
 from PIL import Image
 from dataclasses import dataclass
 import numpy as np
+import pandas as pd
 import torch
 
-def add_img_path(id_, img_folder):
+def add_img_path(id_, path, img_folder):
     return str(path/f'{img_folder}/{str(id_).zfill(6)}.jpg')
 
 class LabelEncoder:
@@ -38,9 +39,9 @@ def get_labels(row, encoder):
         labels.append(label)
     return tuple(labels)
 
-def process_df(df, is_test_df=False):
+def process_df(df, path, is_test_df=False):
     img_folder = 'test_images' if is_test_df else 'train_images'
-    df['img_path'] = df['id'].apply(add_img_path, img_folder=img_folder)
+    df['img_path'] = df['id'].apply(add_img_path, path=path, img_folder=img_folder)
     encoder = LabelEncoder(df)
     df['labels'] = df.apply(get_labels, axis=1, encoder=encoder)
     return df
